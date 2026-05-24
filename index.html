@@ -24,14 +24,19 @@
             font-size: 24px;
             pointer-events: none;
             transition: opacity 0.5s ease;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 30px;
+            border-radius: 8px;
+            z-index: 10;
         }
     </style>
 </head>
 <body>
 
-    <div id="loading">Cargando mapa 3D...</div>
+    <div id="loading">Conectando con el repositorio...</div>
     <div id="canvas-container"></div>
 
+    <!-- Importamos Three.js y sus complementos usando ES Modules -->
     <script type="importmap">
         {
             "imports": {
@@ -52,60 +57,56 @@
         
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0xa0a0a0);
-        scene.fog = new THREE.Fog(0xa0a0a0, 10, 50);
+        scene.fog = new THREE.Fog(0xa0a0a0, 10, 100);
 
         // --- Cámara ---
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 5, 10); // Posición inicial alta para ver el mapa
+        camera.position.set(0, 15, 25); // Posición inicial para perspectiva global del mapa
 
         // --- Renderizador ---
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         container.appendChild(renderer.domElement);
 
         // --- Controles de Cámara ---
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
-        controls.maxPolarAngle = Math.PI / 2 - 0.05; // Evita que la cámara pase por debajo del suelo
+        controls.maxPolarAngle = Math.PI / 2 - 0.05; // Evita atravesar el suelo
 
         // --- Iluminación ---
         const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.5);
         hemiLight.position.set(0, 20, 0);
         scene.add(hemiLight);
 
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
-        dirLight.position.set(3, 10, 5);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(5, 20, 10);
         dirLight.castShadow = true;
-        dirLight.shadow.camera.top = 10;
-        dirLight.shadow.camera.bottom = -10;
-        dirLight.shadow.camera.left = -10;
-        dirLight.shadow.camera.right = 10;
+        dirLight.shadow.camera.top = 25;
+        dirLight.shadow.camera.bottom = -25;
+        dirLight.shadow.camera.left = -25;
+        dirLight.shadow.camera.right = 25;
         dirLight.shadow.camera.near = 0.1;
-        dirLight.shadow.camera.far = 40;
+        dirLight.shadow.camera.far = 60;
+        dirLight.shadow.mapSize.width = 2048; // Sombras de mejor calidad
+        dirLight.shadow.mapSize.height = 2048;
         scene.add(dirLight);
 
-        // Suelo gris de respaldo por si el mapa tarda en cargar
-        const floorGeo = new THREE.PlaneGeometry(100, 100);
-        const floorMat = new THREE.MeshStandardMaterial({ color: 0x808080, depthWrite: true });
-        const ground = new THREE.Mesh(floorGeo, floorMat);
-        ground.rotation.x = -Math.PI / 2;
-        ground.receiveShadow = true;
-        scene.add(ground);
-
-        // --- Carga del Mapa .GLB desde tu GitHub ---
+        // --- Carga del Mapa .GLB ---
         const loader = new GLTFLoader();
-        // URL Raw de tu repositorio
-        const urlMapa = 'https://raw.githubusercontent.com/bjaa-949/woody/main/mapa.glb';
+        
+        // URL a través del CDN de jsDelivr para evitar errores de CORS/Formatos de GitHub
+        const urlMapa = 'https://cdn.jsdelivr.net/gh/bjaa-949/woody@main/mapa.glb';
 
         loader.load(
             urlMapa,
             (gltf) => {
                 const mapa = gltf.scene;
                 
-                // Habilitar sombras para los objetos del mapa
+                // Habilitar sombras en todos los elementos del mapa de forma automática
                 mapa.traverse((child) => {
                     if (child.isMesh) {
                         child.castShadow = true;
@@ -115,26 +116,29 @@
 
                 scene.add(mapa);
                 
-                // Ocultar el texto de carga
+                // Animación de salida para el texto de carga
                 loadingEl.style.opacity = 0;
                 setTimeout(() => loadingEl.remove(), 500);
                 
-                console.log("¡Mapa cargado con éxito!");
+                console.log("¡Mapa 3D cargado correctamente desde el repositorio!");
             },
             (xhr) => {
-                // Progreso de carga opcional en consola
+                // Muestra el progreso real de descarga del archivo
                 if (xhr.total > 0) {
                     const porciento = Math.round((xhr.loaded / xhr.total) * 100);
                     loadingEl.innerText = `Cargando mapa: ${porciento}%`;
+                } else {
+                    loadingEl.innerText = `Descargando datos del mapa...`;
                 }
             },
             (error) => {
-                console.error('Hubo un error cargando el mapa:', error);
-                loadingEl.innerText = 'Error al cargar el mapa. Revisa la consola.';
+                console.error('Error al procesar el GLTF:', error);
+                loadingEl.innerText = 'Error al procesar el archivo del mapa.';
+                loadingEl.style.background = 'rgba(255, 0, 0, 0.8)';
             }
         );
 
-        // --- Ajustar ventana en cambio de tamaño ---
+        // --- Ajustar el lienzo si cambia el tamaño de la pantalla ---
         window.addEventListener('resize', onWindowResize);
 
         function onWindowResize() {
@@ -143,11 +147,11 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // --- Bucle de Animación ---
+        // --- Bucle de Renderizado ---
         function animate() {
             requestAnimationFrame(animate);
 
-            // Requerido si controls.enableDamping = true
+            // Actualiza las físicas suaves del movimiento de cámara
             controls.update(); 
 
             renderer.render(scene, camera);
