@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visor de Mapa 3D - Woody desde GitHub</title>
+    <title>Mi Juego 3D - Vista de Mapa</title>
     <style>
         body {
             margin: 0;
-            padding: 0;
             overflow: hidden;
             background-color: #1a1a1a;
             font-family: Arial, sans-serif;
@@ -24,15 +23,15 @@
             color: white;
             font-size: 24px;
             pointer-events: none;
-            transition: opacity 0.5s;
-            text-align: center;
-        }
-        #progress {
-            font-size: 16px;
-            color: #888;
-            margin-top: 10px;
+            transition: opacity 0.5s ease;
         }
     </style>
+</head>
+<body>
+
+    <div id="loading">Cargando mapa 3D...</div>
+    <div id="canvas-container"></div>
+
     <script type="importmap">
         {
             "imports": {
@@ -41,114 +40,101 @@
             }
         }
     </script>
-</head>
-<body>
-
-    <div id="loading">
-        <div>Cargando mapa 3D desde GitHub...</div>
-        <div id="progress">0%</div>
-    </div>
-    <div id="canvas-container"></div>
 
     <script type="module">
         import * as THREE from 'three';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        // --- 1. Escena, Cámara y Renderizador ---
+        // --- Configuración Básica de la Escena ---
         const container = document.getElementById('canvas-container');
+        const loadingEl = document.getElementById('loading');
+        
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x1e1e24); 
+        scene.background = new THREE.Color(0xa0a0a0);
+        scene.fog = new THREE.Fog(0xa0a0a0, 10, 50);
 
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
-        camera.position.set(0, 50, 100); 
+        // --- Cámara ---
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 5, 10); // Posición inicial alta para ver el mapa
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        // --- Renderizador ---
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setPixelRatio(window.devicePixelRatio);
         renderer.shadowMap.enabled = true;
-        // Configuración de color moderna para evitar mapas oscuros
-        renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.0;
         container.appendChild(renderer.domElement);
 
-        // --- 2. Controles ---
+        // --- Controles de Cámara ---
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
-        controls.maxPolarAngle = Math.PI / 2 - 0.05; // Evita pasar por debajo del suelo
+        controls.maxPolarAngle = Math.PI / 2 - 0.05; // Evita que la cámara pase por debajo del suelo
 
-        // --- 3. Iluminación Avanzada ---
-        const ambientLight = new THREE.AmbientLight(0xffffff, 1.2); 
-        scene.add(ambientLight);
+        // --- Iluminación ---
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.5);
+        hemiLight.position.set(0, 20, 0);
+        scene.add(hemiLight);
 
-        const dirLight1 = new THREE.DirectionalLight(0xffffff, 2.0);
-        dirLight1.position.set(100, 200, 100);
-        dirLight1.castShadow = true;
-        scene.add(dirLight1);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        dirLight.position.set(3, 10, 5);
+        dirLight.castShadow = true;
+        dirLight.shadow.camera.top = 10;
+        dirLight.shadow.camera.bottom = -10;
+        dirLight.shadow.camera.left = -10;
+        dirLight.shadow.camera.right = 10;
+        dirLight.shadow.camera.near = 0.1;
+        dirLight.shadow.camera.far = 40;
+        scene.add(dirLight);
 
-        const dirLight2 = new THREE.DirectionalLight(0xaaccff, 0.8); // Luz de relleno azulada (cielo)
-        dirLight2.position.set(-100, 100, -100);
-        scene.add(dirLight2);
+        // Suelo gris de respaldo por si el mapa tarda en cargar
+        const floorGeo = new THREE.PlaneGeometry(100, 100);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x808080, depthWrite: true });
+        const ground = new THREE.Mesh(floorGeo, floorMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
 
-        // --- 4. Cargar el modelo saltando el límite de Git LFS ---
+        // --- Carga del Mapa .GLB desde tu GitHub ---
         const loader = new GLTFLoader();
-        
-        // URL alternativa de GitHub que fuerza la descarga del binario real de más de 100MB
-        const modelUrl = 'https://github.com/bjaa-949/woody/raw/main/mapa.glb';
-
-        const progressElement = document.getElementById('progress');
+        // URL Raw de tu repositorio
+        const urlMapa = 'https://raw.githubusercontent.com/bjaa-949/woody/main/mapa.glb';
 
         loader.load(
-            modelUrl,
-            function (gltf) {
-                const model = gltf.scene;
+            urlMapa,
+            (gltf) => {
+                const mapa = gltf.scene;
                 
-                // Asegurar que los materiales reaccionen bien a la luz externa
-                model.traverse((node) => {
-                    if (node.isMesh) {
-                        node.castShadow = true;
-                        node.receiveShadow = true;
-                        if(node.material) {
-                            node.material.depthWrite = true;
-                        }
+                // Habilitar sombras para los objetos del mapa
+                mapa.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
                     }
                 });
 
-                scene.add(model);
-                document.getElementById('loading').style.opacity = 0;
-
-                // Centrado automático dinámico basado en el tamaño real del mapa
-                const box = new THREE.Box3().setFromObject(model);
-                const center = box.getCenter(new THREE.Vector3());
-                const size = box.getSize(new THREE.Vector3());
+                scene.add(mapa);
                 
-                controls.target.copy(center);
-                // Posicionar la cámara a una distancia proporcional al tamaño del mapa
-                const maxDim = Math.max(size.x, size.y, size.z);
-                camera.position.set(center.x, center.y + maxDim, center.z + maxDim);
-                camera.lookAt(center);
+                // Ocultar el texto de carga
+                loadingEl.style.opacity = 0;
+                setTimeout(() => loadingEl.remove(), 500);
                 
-                controls.update();
+                console.log("¡Mapa cargado con éxito!");
             },
-            // Progreso de carga en pantalla
-            function (xhr) {
-                if (xhr.total) {
-                    const percentComplete = Math.round((xhr.loaded / xhr.total) * 100);
-                    progressElement.innerText = `Descargando: ${percentComplete}% (${(xhr.loaded / 1024 / 1024).toFixed(1)} MB)`;
-                } else {
-                    // Si GitHub no envía el tamaño total en los headers, muestra lo que va descargando
-                    progressElement.innerText = `Descargando: ${(xhr.loaded / 1024 / 1024).toFixed(1)} MB...`;
+            (xhr) => {
+                // Progreso de carga opcional en consola
+                if (xhr.total > 0) {
+                    const porciento = Math.round((xhr.loaded / xhr.total) * 100);
+                    loadingEl.innerText = `Cargando mapa: ${porciento}%`;
                 }
             },
-            // Error
-            function (error) {
-                console.error('Error detallado:', error);
-                document.getElementById('loading').innerHTML = 'Error al procesar el mapa.<br><span style="font-size:14px; color:#ff8888;">Asegúrate de ejecutar este HTML usando un Servidor Local (Live Server).</span>';
+            (error) => {
+                console.error('Hubo un error cargando el mapa:', error);
+                loadingEl.innerText = 'Error al cargar el mapa. Revisa la consola.';
             }
         );
 
-        // --- 5. Redimensionar ventana ---
+        // --- Ajustar ventana en cambio de tamaño ---
         window.addEventListener('resize', onWindowResize);
 
         function onWindowResize() {
@@ -157,14 +143,17 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // --- 6. Render Loop ---
+        // --- Bucle de Animación ---
         function animate() {
             requestAnimationFrame(animate);
-            controls.update();
+
+            // Requerido si controls.enableDamping = true
+            controls.update(); 
+
             renderer.render(scene, camera);
         }
-        animate();
 
+        animate();
     </script>
 </body>
 </html>
