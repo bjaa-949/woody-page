@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visor de Mapa 3D - Woody desde GitHub</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            font-family: Arial, sans-serif;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 24px;
+            pointer-events: none;
+            transition: opacity 0.5s;
+            text-align: center;
+        }
+        #progress {
+            font-size: 16px;
+            color: #888;
+            margin-top: 10px;
+        }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="loading">
+        <div>Cargando mapa 3D desde GitHub...</div>
+        <div id="progress">0%</div>
+    </div>
+    <div id="canvas-container"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- 1. Escena, Cámara y Renderizador ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1e1e24); 
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
+        camera.position.set(0, 50, 100); 
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        // Configuración de color moderna para evitar mapas oscuros
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        container.appendChild(renderer.domElement);
+
+        // --- 2. Controles ---
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxPolarAngle = Math.PI / 2 - 0.05; // Evita pasar por debajo del suelo
+
+        // --- 3. Iluminación Avanzada ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.2); 
+        scene.add(ambientLight);
+
+        const dirLight1 = new THREE.DirectionalLight(0xffffff, 2.0);
+        dirLight1.position.set(100, 200, 100);
+        dirLight1.castShadow = true;
+        scene.add(dirLight1);
+
+        const dirLight2 = new THREE.DirectionalLight(0xaaccff, 0.8); // Luz de relleno azulada (cielo)
+        dirLight2.position.set(-100, 100, -100);
+        scene.add(dirLight2);
+
+        // --- 4. Cargar el modelo saltando el límite de Git LFS ---
+        const loader = new GLTFLoader();
+        
+        // URL alternativa de GitHub que fuerza la descarga del binario real de más de 100MB
+        const modelUrl = 'https://github.com/bjaa-949/woody/raw/main/mapa.glb';
+
+        const progressElement = document.getElementById('progress');
+
+        loader.load(
+            modelUrl,
+            function (gltf) {
+                const model = gltf.scene;
+                
+                // Asegurar que los materiales reaccionen bien a la luz externa
+                model.traverse((node) => {
+                    if (node.isMesh) {
+                        node.castShadow = true;
+                        node.receiveShadow = true;
+                        if(node.material) {
+                            node.material.depthWrite = true;
+                        }
+                    }
+                });
+
+                scene.add(model);
+                document.getElementById('loading').style.opacity = 0;
+
+                // Centrado automático dinámico basado en el tamaño real del mapa
+                const box = new THREE.Box3().setFromObject(model);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                
+                controls.target.copy(center);
+                // Posicionar la cámara a una distancia proporcional al tamaño del mapa
+                const maxDim = Math.max(size.x, size.y, size.z);
+                camera.position.set(center.x, center.y + maxDim, center.z + maxDim);
+                camera.lookAt(center);
+                
+                controls.update();
+            },
+            // Progreso de carga en pantalla
+            function (xhr) {
+                if (xhr.total) {
+                    const percentComplete = Math.round((xhr.loaded / xhr.total) * 100);
+                    progressElement.innerText = `Descargando: ${percentComplete}% (${(xhr.loaded / 1024 / 1024).toFixed(1)} MB)`;
+                } else {
+                    // Si GitHub no envía el tamaño total en los headers, muestra lo que va descargando
+                    progressElement.innerText = `Descargando: ${(xhr.loaded / 1024 / 1024).toFixed(1)} MB...`;
+                }
+            },
+            // Error
+            function (error) {
+                console.error('Error detallado:', error);
+                document.getElementById('loading').innerHTML = 'Error al procesar el mapa.<br><span style="font-size:14px; color:#ff8888;">Asegúrate de ejecutar este HTML usando un Servidor Local (Live Server).</span>';
+            }
+        );
+
+        // --- 5. Redimensionar ventana ---
+        window.addEventListener('resize', onWindowResize);
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- 6. Render Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+    </script>
+</body>
+</html>
